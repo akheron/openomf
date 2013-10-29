@@ -57,9 +57,11 @@ void cb_har_spawn_object(object *parent, int id, vec2i pos, int g, void *userdat
 }
 
 void har_move(object *obj) {
+    har *har = object_get_userdata(obj);
     vec2f vel = object_get_vel(obj);
     obj->pos.x += vel.x;
     obj->pos.y += (vel.y*0.003);
+
     if(obj->pos.y > 190) {
         // We collided with ground, so set vertical velocity to 0 and
         // make sure object is level with ground
@@ -68,7 +70,8 @@ void har_move(object *obj) {
 
         // Change animation from jump to walk or idle,
         // depending on horizontal velocity
-        har *har = object_get_userdata(obj);
+        // If HAR has been hit in mid-air, then
+        // har should be in RECOIL state and needs to be set to GETTING_UP
         if(har->state == STATE_JUMPING) {
             if(object_get_hstate(obj) == OBJECT_MOVING) {
                 har->state = STATE_WALKING;
@@ -77,8 +80,11 @@ void har_move(object *obj) {
                 har->state = STATE_STANDING;
                 har_set_ani(obj, ANIM_IDLE, 1);
             }
+        } else if(har->state == STATE_JUMP_RECOIL) {
+            har->state = STATE_GETTING_UP;
+            har_set_ani(obj, ANIM_STANDUP, 0);
         }
-    } else {
+    } else if(har->state == STATE_JUMPING || har->state == STATE_JUMP_RECOIL) {
         object_set_vel(obj, vec2f_create(vel.x, vel.y + obj->gravity));
     }
 }
@@ -171,7 +177,11 @@ void har_collide_with_har(object *obj_a, object *obj_b) {
         har_spawn_scrap(obj_b, hit_coord);
         a->damage_done = 1;
         b->damage_received = 1;
-        b->state = STATE_RECOIL;
+        if(b->state == STATE_JUMPING) {
+            b->state = STATE_JUMP_RECOIL;
+        } else {
+            b->state = STATE_RECOIL;
+        }
         vec2f vel = object_get_vel(obj_b);
         vel.x = 0.0f;
         object_set_vel(obj_b, vel);
@@ -253,7 +263,9 @@ void har_act(object *obj, int act_type) {
     if(!(har->state == STATE_STANDING ||
          har->state == STATE_CROUCHING ||
          har->state == STATE_WALKING ||
-         har->state == STATE_JUMPING)) {
+         har->state == STATE_JUMPING ||
+         har->state == STATE_JUMP_RECOIL ||
+         har->state == STATE_GETTING_UP)) {
         // doing something else, ignore input
         return;
     }
@@ -439,11 +451,13 @@ void har_act(object *obj, int act_type) {
 
 void har_finished(object *obj) {
     har *har = object_get_userdata(obj);
-    if(har->state != STATE_CROUCHING) {
+    if(har->state == STATE_JUMPING) {
+        har_set_ani(obj, ANIM_JUMPING, 1);
+    } else if(har->state == STATE_CROUCHING) {
+        har_set_ani(obj, ANIM_CROUCHING, 1);
+    } else {
         har->state = STATE_STANDING;
         har_set_ani(obj, ANIM_IDLE, 1);
-    } else {
-        har_set_ani(obj, ANIM_CROUCHING, 1);
     }
     har->executing_move = 0;
 }
