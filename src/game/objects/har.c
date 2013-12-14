@@ -119,6 +119,7 @@ void har_move(object *obj) {
         // Change animation from jump to walk or idle,
         // depending on horizontal velocity
         har *h = object_get_userdata(obj);
+        object_set_gravity(obj, 1);
         if(h->state == STATE_JUMPING) {
             if(object_get_hstate(obj) == OBJECT_MOVING) {
                 h->state = STATE_WALKING;
@@ -129,7 +130,13 @@ void har_move(object *obj) {
             }
         }
     } else {
+        /*vec2f vel;*/
         object_set_vel(obj, vec2f_create(vel.x, vel.y + obj->gravity));
+        vel = object_get_vel(obj);
+        if (obj->pos.y < 190) {
+            DEBUG("object velocity %f, %f", vel.x, vel.y + obj->gravity);
+            DEBUG("object pos %f, %f", obj->pos.x, obj->pos.y);
+        }
     }
 }
 
@@ -344,17 +351,15 @@ void har_collide_with_har(object *obj_a, object *obj_b) {
 
         // XXX   a hackish way to determine if a HAR is fallen or not
         sd_stringparser_peek(obj_b->animation_state.parser, sd_stringparser_num_frames(obj_b->animation_state.parser)-1, &frame_b);
-        if(frame_b.duration > 100) {
-            b->state = STATE_FALLEN;
-        }
+        /*if(frame_b.duration > 100) {*/
+            /*b->state = STATE_FALLEN;*/
+        /*}*/
         DEBUG("HAR %s to HAR %s collision at %d,%d!", 
             get_id_name(a->id), 
             get_id_name(b->id),
             hit_coord.x,
             hit_coord.y);
         DEBUG("HAR %s animation set to %s", get_id_name(b->id), str_c(&move->footer_string));
-    } else if (a->damage_done) {
-        DEBUG("move already hit");
     }
 }
 
@@ -389,11 +394,11 @@ void har_collide_with_projectile(object *o_har, object *o_pjt) {
         // XXX   a hackish way to determine if a HAR is fallen or not
         sd_stringparser_peek(o_har->animation_state.parser, sd_stringparser_num_frames(o_har->animation_state.parser)-1, &frame_h);
         if (move->footer_string.data) { // hack for chronos' stasis
-            if(frame_h.duration > 100) {
-                h->state = STATE_FALLEN;
-            } else {
+            /*if(frame_h.duration > 100) {*/
+                /*h->state = STATE_FALLEN;*/
+            /*} else {*/
                 h->state = STATE_RECOIL;
-            }
+            /*}*/
         }
         vec2f vel = object_get_vel(o_har);
         vel.x = 0.0f;
@@ -445,14 +450,23 @@ void har_tick(object *obj) {
     if(pos.x > 305) pos.x = 305;
     object_set_pos(obj, pos);
 
+    if (pos.y < 190 && h->state == STATE_RECOIL) {
+        DEBUG("switching to fallen");
+        h->state = STATE_FALLEN;
+    }
+
+    if (h->state == STATE_RECOIL) {
+        DEBUG("pos.y %d", pos.y);
+    }
+
     // Make the HAR get up
-    if(h->state == STATE_FALLEN && obj->animation_state.parser->current_frame.is_final_frame) {
+    if(h->state == STATE_FALLEN && obj->animation_state.parser->current_frame.is_final_frame && (pos.y >= 190 || pos.x >=305 || pos.x <= 15) ) {
         h->state = STATE_STANDING_UP;
         har_set_ani(obj, ANIM_STANDUP, 0);
     }
 
     // Stop HAR from sliding if touching the ground
-    if(h->state != STATE_JUMPING) {
+    if(h->state != STATE_JUMPING && h->state != STATE_FALLEN && h->state != STATE_RECOIL) {
         if(h->state != STATE_WALKING || h->executing_move) {
             vec2f vel = object_get_vel(obj);
             vel.x = 0;
@@ -460,11 +474,11 @@ void har_tick(object *obj) {
         }
     }
     if(h->flinching) {
-        vec2f push = object_get_vel(obj);
+        /*vec2f push = object_get_vel(obj);*/
         // The infamous stretson-harrison method
         // XXX TODO is there a non-hardcoded value that we could use?
-        push.x = 4.0f * -object_get_direction(obj);
-        object_set_vel(obj, push);
+        /*push.x = 4.0f * -object_get_direction(obj);*/
+        /*object_set_vel(obj, push);*/
     }
 
     if (h->endurance < h->endurance_max && !(h->executing_move || h->state == STATE_RECOIL || h->state == STATE_STUNNED || h->state == STATE_FALLEN || h->state == STATE_STANDING_UP)) {
@@ -713,6 +727,7 @@ void har_act(object *obj, int act_type) {
         case ACT_UP:
             if(h->state != STATE_JUMPING) {
                 har_set_ani(obj, ANIM_JUMPING, 1);
+                object_set_gravity(obj, h->af_data.fall_speed);
                 vy = (float)h->af_data.jump_speed;
                 object_set_vel(obj, vec2f_create(0,vy));
                 h->state = STATE_JUMPING;
@@ -723,6 +738,7 @@ void har_act(object *obj, int act_type) {
                 har_set_ani(obj, ANIM_JUMPING, 1);
                 vy = (float)h->af_data.jump_speed;
                 vx = h->af_data.reverse_speed*-1/(float)320;
+                object_set_gravity(obj, h->af_data.fall_speed);
                 if(direction == OBJECT_FACE_LEFT) {
                     vx = (h->af_data.forward_speed*-1)/(float)320;
                 }
@@ -735,6 +751,7 @@ void har_act(object *obj, int act_type) {
                 har_set_ani(obj, ANIM_JUMPING, 1);
                 vy = (float)h->af_data.jump_speed;
                 vx = h->af_data.forward_speed/(float)320;
+                object_set_gravity(obj, h->af_data.fall_speed);
                 if(direction == OBJECT_FACE_LEFT) {
                     vx = h->af_data.reverse_speed/(float)320;
                 }
@@ -826,7 +843,8 @@ int har_create(object *obj, palette *pal, int dir, int har_id, int player_id) {
     local->executing_move = 0;
 
     // Object related stuff
-    object_set_gravity(obj, local->af_data.fall_speed);
+    /*object_set_gravity(obj, local->af_data.fall_speed);*/
+    object_set_gravity(obj, 1);
     object_set_layers(obj, LAYER_HAR | (player_id == 0 ? LAYER_HAR1 : LAYER_HAR2));
     object_set_direction(obj, dir);
     object_set_repeat(obj, 1);
